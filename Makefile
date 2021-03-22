@@ -1,22 +1,17 @@
 CXX=		g++
 CXXFLAGS=	-g -O3 -fopenmp -Wall
-CPPFLAGS=	-Iinclude -I$(BOOST_DIR)/include
-INCLUDES=
+CPPFLAGS=	-I$(HTSLIBDIR)/include/htslib -Iinclude -I$(BOOST_DIR)/include
+INCLUDES=	
 OBJS=		
-EXES=		$(BINDIR)/computeIBS $(BINDIR)/phaseImpMissing
-LIBS=		-Wl,-Bstatic -lboost_iostreams -lz -Wl,-Bdynamic -L$(BOOST_DIR)/lib
+EXES=		$(BINDIR)/computeIBS $(BINDIR)/phaseImpMissing $(BINDIR)/osprey
+BOOSTLIBS=	-L$(BOOST_DIR)/lib -lboost_iostreams
+#LIBS=		-L$(HTSLIBDIR)/lib -lhts -Wl,-Bstatic $(BOOSTLIBS) -lz -Wl,-Bdynamic
+LIBS=		-L$(HTSLIBDIR)/lib -lhts -Wl,-Bstatic $(BOOSTLIBS) -Wl,-Bdynamic -lz
 
 BINDIR=		bin
 BOOST_DIR=	/humgen/cnp04/bobh/boost_1_58_0/install
+HTSLIBDIR=	/humgen/cnp04/bobh/htslib
 
-#
-#g++ -g -fopenmp -O3 -Wall \
-#    phaseImpMissing.cpp \
-#    -Iinclude -I${boostDir}/include \
-#    -Wl,-Bstatic -lboost_iostreams -lz -Wl,-Bdynamic \
-#    -o phaseImpMissing \
-#    -L${boostDir}/lib \
-#    || exit 1
 
 .SUFFIXES:	.cpp .o
 .PHONY:		all clean
@@ -27,7 +22,11 @@ BOOST_DIR=	/humgen/cnp04/bobh/boost_1_58_0/install
 .c.o:
 		$(CC) -c $(CFLAGS) $(CPPFLAGS) $(INCLUDES) $< -o $@
 
+
 all:		$(EXES)
+
+$(BINDIR)/osprey: src/Osprey.o src/OspreyParams.o src/VCFReader.o src/VCFWriter.o src/Variant.o src/PhaseImpMissing.o src/PhaseImpCore.o src/format.o src/timestamp.o
+		$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 
 $(BINDIR)/computeIBS: src/computeIBS.o
 		$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
