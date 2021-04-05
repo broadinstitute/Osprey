@@ -16,6 +16,7 @@
 #include <cmath>
 
 #include "omp.h"
+#include "format.hpp"
 #include "timestamp.hpp"
 
 using namespace std;
@@ -171,7 +172,7 @@ vector< vector<double> > phase(const double params[],
             }
         }
 
-        if (totP < 0.1) {
+        if (totP == 0) {
             if (debug > 0) {
                 cout << "Warning: normalization failed: i=" << i << " j=" << j << " C=" << C << " totP=" << totP << endl;
             }
@@ -183,9 +184,14 @@ vector< vector<double> > phase(const double params[],
 
         // normalize hapCNPs
         for (int k = 0; k < 2; k++) {
-            double check = 0;
+            double hapSum = 0;
             for (int c = 0; c < C; c++) {
                 hapCNPs[2*i+k][c] /= totP;
+                hapSum += hapCNPs[2*i+k][c];
+            }
+            double check = 0;
+            for (int c = 0; c < C; c++) {
+                hapCNPs[2*i+k][c] /= hapSum;
                 check += hapCNPs[2*i+k][c];
             }
             assert(fabs(1-check)<1e-6);
@@ -224,10 +230,22 @@ double r2imp(const vector< vector<double> > &hapCNPs,
                 estDipCNs[i] += pVec[j] * meanCN(hapCNPs[ibsl[h][j].second]);
                 pCheck += pVec[j];
             }
-            assert(fabs(pCheck-1) < 1e-6);
+            // For debugging:
+            // if (fabs(pCheck-1) > 1e-6) {
+            //     cout << "#WARN: normalization failed i=" << i << " hap=" << (h-2*impInds[i]+1) << " pCheck=" << pCheck << endl;
+            // }
+            // assert(fabs(pCheck-1) < 1e-6);
         }
     }
-    return r2(estDipCNs, impDipCNs);
+    /// cout << "#DBG: estDipCNs N=" << estDipCNs.size() << " impDipCNs N=" << impDipCNs.size() << endl;
+    /// for (uint i = 0; i < estDipCNs.size(); i++) {
+    ///     cout << "#DBG: estDipCN[" << i << "] = " << estDipCNs[i] << " impDipCNs[" << i << "] = " << impDipCNs[i] << endl;
+    /// }
+    double result = r2(estDipCNs, impDipCNs);
+    if (isnan(result)) {
+        result = 0;
+    }
+    return result;
 }
 
 void impMissing(vector< vector<double> > &hapCNPs,
@@ -271,6 +289,124 @@ void printIterOutput(int t,
     cout << endl;
 }
 
+// Local struct for chooseBenchmarkImpInds
+struct ChooseImpIndsPickInfo {
+    int ind;
+    int cnc;
+    double cnf;
+
+    // Sort in CNF order, break ties using ind for stability
+    bool operator< (const struct ChooseImpIndsPickInfo& other) {
+        return ((cnf == other.cnf) ? (ind < other.ind) : (cnf < other.cnf));
+    }
+};
+
+void chooseBenchmarkImpInds(const vector< vector<double> >& dipCNPs,
+                            const vector<bool>& masked,
+                            const double fraction,
+                            vector<int>& impInds,
+                            const int debug) {
+
+    typedef struct ChooseImpIndsPickInfo PickInfo;
+    const int N = dipCNPs.size();
+    int avail = std::count(masked.begin(), masked.end(), false);
+    int count = int(lround(avail * fraction));
+    int goal = count;
+    /// cout << "Picking count=" << count << " inds of avail=" << avail << endl;
+    vector<PickInfo> pickInfos(avail);
+    vector<int> kvec;
+    /// cout << "Starting info loop N=" << N << " ..." << endl;
+    for (int i = 0, j = 0; i < N; i++) {
+        if (!masked[i]) {
+            double cnf = meanCN(dipCNPs[i]);
+            int cnc = int(lround(cnf));
+            if (cnc >= int(kvec.size())) {
+                kvec.resize(cnc+1, 0);
+            }
+            kvec[cnc]++;
+            pickInfos[j].ind = i;
+            pickInfos[j].cnc = cnc;
+            pickInfos[j].cnf = cnf;
+            j++;
+        }
+    }
+    const int C = kvec.size();
+    vector<int> pickvec(C, 0);
+    int npicked = 0;
+    // Seed with one pick from every copy number class with more than one member
+    for (int c = 0; c < C; c++) {
+        if (count > 0 && kvec[c] > 1) {
+            /// cout << "Pick loop 1: c=" << c << " pick=" << 1 << " of " << (kvec[c]-pickvec[c]) << endl;
+            pickvec[c] += 1;
+            npicked += 1;
+            count -= 1;
+        }
+    }
+    if (count > 0) {
+        double f = count / (double) (avail - npicked);
+        for (int c = 0; c < C && count > 0; c++) {
+            if (kvec[c] > pickvec[c]) {
+                int pick = min(int(lround(f * (kvec[c] - pickvec[c]))), count);
+                /// cout << "Pick loop 2: c=" << c << " f=" << f << " pick=" << pick << " of " << (kvec[c]-pickvec[c]) << endl;
+                pickvec[c] += pick;
+                count -= pick;
+            }
+        }
+        while (count > 0) {
+            for (int c = C-1; c >= 0 && count > 0; c--) {
+                if (kvec[c] > pickvec[c]) {
+                    pickvec[c]++;
+                    count--;
+                }
+            }
+        }
+    }
+
+    /// cout << "About to sort" << endl;
+    std::sort(pickInfos.begin(), pickInfos.end());
+    /// cout << "Sort done" << endl;
+
+    /// cout << "Available pick infos avail=" << avail << endl;
+    for (int c = 0, j = 0; c < C; c++) {
+        int pick = pickvec[c];
+        if (pick == 0) {
+            continue;
+        }
+        /// cout << "Pick loop 3: c=" << c << " j=" << j << endl;
+        while (pickInfos[j].cnc < c) {
+            j++;
+        }
+        /// cout << " adjusted j=" << j << endl;
+        int jend = j;
+        while (jend < avail && pickInfos[jend+1].cnc == c) {
+            jend++;
+        }
+        /// cout << " jend=" << jend << endl;
+        int npicked = 0;
+        double jinc = (jend - j + 1) / (double) pick;
+        for (int i = 0; i < pick; i++) {
+            int jp = int(lround(j + i*jinc));
+            assert(j <= jp && jp <= jend);
+            impInds.push_back(pickInfos[jp].ind);
+            /// cout << "Pick loop 3: c=" << c << " pick=" << pick << " jp=" << jp << " jend=" << jend << " jinc=" << jinc << endl;
+            /// cout << "Pick loop 3: selected jp=" << jp << " ind=" << pickInfos[jp].ind << endl;
+            npicked++;
+        }
+        /// cout << "#DBG: Pick loop 3: c=" << c << " pick=" << pick << " jn=" << jcheck << endl;
+        assert(npicked == pick);
+    }
+
+    if (debug > 0) {
+        cout << "Pick benchmark samples N=" << goal
+             << " cndist " << formatVector(kvec) << " picked " << formatVector(pickvec) << endl;
+    }
+    if (int(impInds.size()) != goal) {
+        cout << "Warning: Pick benchmark samples goal=" << goal << " chose=" << int(impInds.size())
+             << " cndist " << formatVector(kvec) << " picked " << formatVector(pickvec) << endl;
+        assert(int(impInds.size()) == goal);
+    }
+}
+
 // Algorithm entry point
 
 extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, int> > >& ibsMatrix,
@@ -290,7 +426,7 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
 
     assert(H == 2*N);
 
-    if (debug > 0) {
+    if (debug > 1) {
         cout << "Initial parameter values:" << endl;
         cout << "  Nchop = " << params[0] << endl;
         cout << "  resampleP = " << params[1] << endl;
@@ -314,7 +450,7 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
             hapCNPs[2*i+1].resize(dipCNPs[i].size());
         }
     }
-    if (Nimpute > 0 && debug > 0) {
+    if (Nimpute > 0 && debug > 1) {
         cout << "Missing CNLs for " << Nimpute << " individuals; will impute" << endl;
     }
 
@@ -322,20 +458,20 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
     vector<bool> maskedJustMiss = masked;
     vector<double> impDipCNs;
     vector<int> impInds;
-    for (int i = 0; i < H/2; i += 5) {
-        if (!masked[i]) {
-            masked[i] = true;
-            impDipCNs.push_back(meanCN(dipCNPs[i]));
-            impInds.push_back(i);
-        }
+    chooseBenchmarkImpInds(dipCNPs, masked, 0.2, impInds, debug);
+    for (uint i = 0; i < impInds.size(); i++) {
+        int ind = impInds[i];
+        assert(!masked[ind]);
+        masked[ind] = true;
+        impDipCNs.push_back(meanCN(dipCNPs[ind]));
     }
 
-    if (debug > 0) {
+    if (debug > 1) {
         cout << "Using " << impInds.size() << " individuals for imputation benchmark" << endl;
         cout << endl;
     }
 
-    if (debug > 0) {
+    if (debug > 2) {
         cout << "Beginning phasing (" << tBurn << " burn-in iters; then parameter-optimization)" << endl;
         cout << "ITER #: IMP_R2 params" << endl;
         printIterOutput(0, hapCNPs, params, impDipCNs, impInds, masked, ibsMatrix);
@@ -346,12 +482,13 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
         order[i] = i;
     }
 
-    double r2best = 0;
+    double r2best = -1;
     vector< vector<double> > hapCNPsBest;
     double paramsBest[N_PARAMS];
     int tBest = 0;
 
     // run phasing benchmark + parameter optimization
+    memcpy(paramsBest, params, sizeof(params));
     for (int t = 0; t < nIterations; t++) {
         random_shuffle(order.begin(), order.end());
 
@@ -383,7 +520,7 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
             hapCNPs = hapCNPsSame;
         }
 
-        if (debug > 0) {
+        if (debug > 2) {
             printIterOutput(t+1, hapCNPs, params, impDipCNs, impInds, masked, ibsMatrix);
         }
 
@@ -398,7 +535,7 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
     hapCNPs = hapCNPsBest;
     memcpy(params, paramsBest, sizeof(params));
     if (debug > 0) {
-        cout << "BEST ITER: " << endl;
+        cout << "Best iteration: " << endl;
         printIterOutput(tBest+1, hapCNPs, params, impDipCNs, impInds, masked, ibsMatrix);
         cout << endl;
     }
@@ -416,8 +553,13 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
             }
         }
     }
+    if (r2best >= opt_impR2) {
+        opt_impR2 = r2best;
+        opt_Nchop = (int) params[0];
+        opt_mul = params[2];
+    }
 
-    if (debug > 0) {
+    if (debug > 1) {
         for (int imp_version = 1; imp_version <= 3; imp_version++) {
             string ver_str;
             int Nchop;
@@ -441,27 +583,29 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
     }
 
     // phase all individuals using optimized parameters
-    if (debug > 0) {
+    if (debug > 2) {
         cout << endl;
         cout << "Beginning phasing iterations including previously-masked individuals" << endl;
-        cout << endl;
-        cout << "NOTE: test data is now used during phasing; benchmarks are only sanity-checks" << endl;
+        // cout << endl;
+        // cout << "NOTE: test data is now used during phasing; benchmarks are only sanity-checks" << endl;
     }
 
     masked = maskedJustMiss;
     for (int t = 0; t < tFinal; t++) {
         random_shuffle(order.begin(), order.end());
         hapCNPs = phase(params, ibsMatrix, dipCNPs, hapCNPs, masked, order, debug);
-        if (debug > 0) {
+        if (debug > 2) {
             printIterOutput(-(t+1), hapCNPs, params, impDipCNs, impInds, masked, ibsMatrix);
         }
     }
 
     // impute any individuals in IBS file who had missing CNLs
-    if (debug > 0) {
+    if (debug > 1) {
         cout << endl;
         cout << "Imputing " << Nimpute << " individuals in IBS file with missing CNLs" << endl;
     }
+    // TBD: Why are we using opt_X as parameters here not params as the optimal parameters?
+    // cout << "#DBG: impMissing: using params opt_Nchop=" << opt_Nchop << " opt_mul=" << opt_mul << endl;
     impMissing(hapCNPs, masked, ibsMatrix, opt_Nchop, opt_mul);
 
     return(hapCNPs);
