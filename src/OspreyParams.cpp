@@ -1,4 +1,6 @@
 
+#include <cassert>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -38,7 +40,8 @@ namespace Osprey {
         stream << " --ibsMatrixFile [-ibs] file     IBS matrix file (required)." << endl;
         stream << " --threads [-t] N                Number of threads (" << DEFAULT_THREADS << ")." << endl;
         stream << " --iterations [-iter] N          Number of phasing iterations (" << DEFAULT_ITERATIONS << ")." << endl;
-        stream << " --site ID                       Specific site to process or space separated list." << endl;
+        stream << " --site ID                       Specify site to process or space separated list (all)." << endl;
+        stream << " --siteIndex N@B | N[-M],...     Specify sites to process by variant index ranges or blocks (all)." << endl;
         stream << " --verbose N                     Verbosity level (" << DEFAULT_VERBOSE_LEVEL << ")." << endl;
         stream << " --debug N                       Debug output level (" << DEFAULT_DEBUG_LEVEL << ")." << endl;
     }
@@ -83,7 +86,7 @@ namespace Osprey {
         printUsage(cerr);
     }
 
-    static vector<string> parse_string_list(const char* arg) {
+    static vector<string> parseStringList(const char* arg) {
         string str(arg);
         istringstream stream(str);
         string token;
@@ -94,6 +97,99 @@ namespace Osprey {
             }
         }
         return result;
+    }
+
+    static bool parseSiteIndex(const string& token, uint& value) {
+        const char* p = token.c_str();
+        char* end = NULL;
+        long val = strtol(p, &end, 10);
+        if (token.length() != (uint) (end - p)) {
+            return false;
+        }
+        if (val < 1 || val > INT_MAX) {
+            return false;
+        }
+        value = (uint) val;
+        return true;
+    }
+
+    static bool parseOneIndex(const string& token, vector<uint>& values) {
+        uint val;
+        if (!parseSiteIndex(token, val)) {
+            return false;
+        }
+        values.push_back(val);
+        return true;
+    }
+
+    static bool parseTwoIndexes(const string& token, vector<uint>& values, const char sep) {
+        size_t idx = token.find(sep);
+        if (idx == string::npos || idx == 0 || idx >= token.size()-1) {
+            return false;
+        }
+        if (token.find(sep, idx+1) != string::npos) {
+            return false;
+        }
+        uint val1;
+        uint val2;
+        if (!parseSiteIndex(token.substr(0,idx), val1) ||
+            !parseSiteIndex(token.substr(idx+1), val2)) {
+            return false;
+        }
+        values.push_back(val1);
+        values.push_back(val2);
+        return true;
+    }
+
+    static bool mergeSiteRanges(vector<uint>& ranges, const vector<uint>& values) {
+        assert(values.size() == 2);
+        assert(values[0] > 0);
+        assert(values[1] >= values[0]);
+        if (ranges.empty()) {
+            ranges = values;
+        } else if (ranges[ranges.size()-1] == values[0]-1) {
+            ranges[ranges.size()-1] = values[1];
+        } else if (ranges[ranges.size()-1] < values[0]) {
+            ranges.insert(ranges.end(), values.begin(), values.end());
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    static bool parseSiteIndexSpec(const char* arg, vector<uint>& ranges) {
+        string str(arg);
+        istringstream stream(str);
+        string token;
+        vector<uint> values;
+        while (getline(stream, token, ',')) {
+            values.clear();
+            if (parseTwoIndexes(token, values, '@')) {
+                uint n = values[0];
+                uint b = values[1];
+                values[0] = (n*b - b + 1);
+                values[1] = (n*b);
+                if (!mergeSiteRanges(ranges, values)) {
+                    argerror(format("Invalid or conflicting site index specification: %s", arg));
+                    return false;
+                }
+            } else if (parseTwoIndexes(token, values, '-')) {
+                if (!mergeSiteRanges(ranges, values)) {
+                    argerror(format("Invalid or conflicting site index specification: %s", arg));
+                    return false;
+                }
+            } else if (parseOneIndex(token, values)) {
+                values.push_back(values[0]);
+                if (!mergeSiteRanges(ranges, values)) {
+                    argerror(format("Invalid or conflicting site index specification: %s", arg));
+                    return false;
+                }
+            } else {
+                argerror(format("Invalid site index specification: %s", arg));
+                return false;
+            }
+        }
+        return true;
     }
 
     int OspreyParams::processCommandLineArgs(int argc, const char* argv[]) {
@@ -130,8 +226,15 @@ namespace Osprey {
                 if (!requireArg(option, optarg)) {
                     return -1;
                 }
-                vector<string> argvals = parse_string_list(optarg);
+                vector<string> argvals = parseStringList(optarg);
                 siteList.insert(siteList.end(), argvals.begin(), argvals.end());
+            } else if (matches(option, "--siteIndex")) {
+                if (!requireArg(option, optarg)) {
+                    return -1;
+                }
+                if (!parseSiteIndexSpec(optarg, siteIndexRanges)) {
+                    return -1;
+                }
             } else if (matches(option, "-t") || matches(option, "--threads")) {
                 if (!requireArg(option, optarg)) {
                     return -1;

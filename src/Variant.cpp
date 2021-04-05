@@ -94,6 +94,13 @@ namespace Osprey {
         return result;
     }
 
+    void Variant::updateInfoField(const string& key, const string& value) {
+        int status = bcf_update_info_string(pHeader, pRecord, key.c_str(), value.c_str());
+        if (status != 0) {
+            throw std::runtime_error(format("Error from bcf_update_info: status code %d", status));
+        }
+    }
+
     void Variant::updateFormatField(const string& key, const vector<string>& values) {
         const int count = (int) values.size();
         const char* buffer[count];

@@ -412,7 +412,9 @@ void chooseBenchmarkImpInds(const vector< vector<double> >& dipCNPs,
 extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, int> > >& ibsMatrix,
                                              const vector< vector<double> >& dipCNPs,
                                              const int nIterations,
-                                             const int debug) {
+                                             const int debug,
+                                             double* metricsOut,
+                                             double* paramsOut) {
 
     // Fixed parameters (currently)
     const int tBurn = 20;
@@ -543,6 +545,7 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
     int opt_Nchop = 0;
     double opt_mul = 0;
     double opt_impR2 = 0;
+    double opt_resampleP = params[1];
     for (int Nchop = 20; Nchop <= 200; Nchop += 20) {
         for (double mul = 0.1; mul < 20; mul *= 1.414) {
             double r2 = r2imp(hapCNPs, impDipCNs, impInds, masked, ibsMatrix, Nchop, mul);
@@ -608,10 +611,14 @@ extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, 
     // cout << "#DBG: impMissing: using params opt_Nchop=" << opt_Nchop << " opt_mul=" << opt_mul << endl;
     impMissing(hapCNPs, masked, ibsMatrix, opt_Nchop, opt_mul);
 
+    if (metricsOut != NULL) {
+        metricsOut[0] = opt_impR2;
+    }
+    if (paramsOut != NULL) {
+        paramsOut[0] = opt_Nchop;
+        paramsOut[1] = opt_resampleP;
+        paramsOut[2] = opt_mul;
+    }
+
     return(hapCNPs);
 }
-
-
-
-
-
