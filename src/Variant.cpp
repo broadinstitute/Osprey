@@ -60,13 +60,21 @@ namespace Osprey {
     }
 
     vector< vector<float> > Variant::getCNLs() {
+        return getFormatFloatVectors("CNL");
+    }
+
+    vector< vector<float> > Variant::getCNPs() {
+        return getFormatFloatVectors("CNP");
+    }
+
+    vector< vector<float> > Variant::getFormatFloatVectors(const char* key) {
         unpack(BCF_UN_FMT);
-        bcf_fmt_t* fmt = bcf_get_fmt(pHeader, pRecord, "CNL");
+        bcf_fmt_t* fmt = bcf_get_fmt(pHeader, pRecord, key);
         if (fmt == NULL) {
             return vector< vector<float> >();
         }
         if (fmt->type != BCF_BT_FLOAT) {
-            throw std::runtime_error(format("Invalid type for CNL field: %d", fmt->type));
+            throw std::runtime_error(format("Invalid type for %s field: %d", key, fmt->type));
         }
         int nsamples = bcf_hdr_nsamples(pHeader);
         return unpackFmtFloatVectors((float*) fmt->p, nsamples, fmt->n);

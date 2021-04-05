@@ -1,6 +1,8 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -19,3 +21,16 @@ std::string format(const std::string& format, ...)
     return &vec[0];
 }
 
+std::string formatVector(const std::vector<int>& v)
+{
+    std::ostringstream str;
+    str << "[";
+    for (uint i = 0; i < v.size(); i++) {
+        if (i > 0) {
+            str << ",";
+        }
+        str << v[i];
+    }
+    str << "]";
+    return(str.str());
+}

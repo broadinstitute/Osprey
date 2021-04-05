@@ -30,7 +30,7 @@ int main(int argc, const char* argv[]) {
         exit(-status);
     }
 
-    if (params.iterations < 20 || params.iterations > 1000) {
+    if (params.iterations <= 20 || params.iterations > 1000) {
         cerr << "Invalid number of iterations: " << params.iterations << endl;
         exit(1);
     }

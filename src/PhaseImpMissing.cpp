@@ -174,6 +174,14 @@ namespace Osprey {
         int numConfident = 0;
         vector< string > samples = variant->getSampleIds();
         vector< vector<float> > cnlVector = variant->getCNLs();
+        if (cnlVector.empty()) {
+            // If there is no CNL attribute, use CNP if available.
+            cnlVector = variant->getCNPs();
+        }
+        if (cnlVector.empty()) {
+            dipCNPs.clear();
+            return dipCNPs;
+        }
         for (uint i = 0; i < samples.size(); i++) {
             string sample = samples[i];
             vector<float>& cnls = cnlVector[i];
@@ -228,6 +236,9 @@ namespace Osprey {
 
     static double computeQual(vector<double>& CNPs) {
         // Temporarily overwrite CNPs to compute the second most likely value
+        if (CNPs.size() <= 1) {
+            return 0;
+        }
         int cnMax1 = max_element(CNPs.begin(), CNPs.end()) - CNPs.begin();
         double cnProb1 = CNPs[cnMax1];
         CNPs[cnMax1] = 0;
@@ -251,13 +262,13 @@ namespace Osprey {
 
     static string formatCNLs(const vector<double>& CNPs) {
         vector<double> CNLs = CNPs;
-        uint outLength = 0;
+        uint outLength = 1;
         for (uint i = 0; i < CNLs.size(); i++) {
             CNLs[i] = log10(CNLs[i]);
             if (CNLs[i] < MIN_CN_LIKELIHOOD) {
                 CNLs[i] = MIN_CN_LIKELIHOOD;
             } else {
-                outLength = i;
+                outLength = i + 1;
             }
         }
         ostringstream buffer;
@@ -298,6 +309,13 @@ namespace Osprey {
 
     Variant* PhaseImpMissing::processVariant(Variant* variant) {
         vector< vector<double> > dipCNPs = getDiploidCNPs(variant);
+        if (dipCNPs.empty()) {
+            if (mVerbose > 0) {
+                cout << "Warning: Skipping variant " << variant->getId() << " that has no diploid CNL/CNP attributes" << endl;
+            }
+            return variant;
+        }
+
         vector< vector<double> > hapCNPs = phaseImpCore(mIBSMatrix, dipCNPs, mIterations, mDebug);
 
         Variant* result = variant->reheader(mOutputHeader);

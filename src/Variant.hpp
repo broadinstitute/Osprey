@@ -19,6 +19,7 @@ namespace Osprey {
 
         bcf1_t* getBcfRecord() { return pRecord; }
 
+        std::vector< std::vector<float> > getFormatFloatVectors(const char* key);
         std::vector< std::vector<float> > unpackFmtFloatVectors(float* ptr, int nsamples, int nvalues);
         void unpack(int which);
 
@@ -30,6 +31,7 @@ namespace Osprey {
         std::string getSiteText();
         std::vector<std::string> getSampleIds();
         std::vector< std::vector<float> > getCNLs();
+        std::vector< std::vector<float> > getCNPs();
 
         void updateFormatField(const std::string& key, const std::vector<std::string>& values);
         Variant* reheader(bcf_hdr_t* header);

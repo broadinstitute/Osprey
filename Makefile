@@ -4,9 +4,10 @@ CPPFLAGS=	-I$(HTSLIBDIR)/include/htslib -Iinclude -I$(BOOST_DIR)/include
 INCLUDES=	
 OBJS=		
 EXES=		$(BINDIR)/computeIBS $(BINDIR)/phaseImpMissing $(BINDIR)/osprey
-BOOSTLIBS=	-L$(BOOST_DIR)/lib -lboost_iostreams
+BOOSTLIBS=	$(BOOST_DIR)/lib/libboost_iostreams.a
 #LIBS=		-L$(HTSLIBDIR)/lib -lhts -Wl,-Bstatic $(BOOSTLIBS) -lz -Wl,-Bdynamic
-LIBS=		-L$(HTSLIBDIR)/lib -lhts -Wl,-Bstatic $(BOOSTLIBS) -Wl,-Bdynamic -lz
+#LIBS=		$(HTSLIBDIR)/lib/libhts.a -Wl,-Bstatic $(BOOSTLIBS) -Wl,-Bdynamic -lcurl -lz
+LIBS=		$(HTSLIBDIR)/lib/libhts.a ${BOOSTLIBS} -lcurl -lz -llzma -lbz2
 
 BINDIR=		bin
 BOOST_DIR=	/humgen/cnp04/bobh/boost_1_58_0/install
