@@ -19,7 +19,9 @@ using namespace Osprey;
 extern vector< vector<double> > phaseImpCore(const vector< vector< pair<double, int> > >& ibsMatrix,
                                              const vector< vector<double> >& dipCNPs,
                                              const int nIterations,
-                                             const int debug);
+                                             const int debug,
+                                             double* metricsOut = NULL,
+                                             double* paramsOut = NULL);
 
 static const double MAX_GENOTYPE_QUALITY = 99.0;
 static const double MIN_CN_LIKELIHOOD = -1000.0;
@@ -64,6 +66,8 @@ namespace Osprey {
 
     void PhaseImpMissing::updateVCFHeader(VCFReader& vcfReader, VCFWriter& vcfWriter) {
         bcf_hdr_t* header = bcf_hdr_dup(vcfReader.getHeader());
+        addHeaderLine(header, "##INFO=<ID=OSPR2,Number=1,Type=Float,Description=\"Imputation r2\">");
+        addHeaderLine(header, "##INFO=<ID=OSPPARAMS,Number=1,Type=String,Description=\"Phasing parameters\">");
         addHeaderLine(header, "##FORMAT=<ID=PCN,Number=1,Type=String,Description=\"Phased copy number\">");
         addHeaderLine(header, "##FORMAT=<ID=PCNF,Number=1,Type=String,Description=\"Phased fractional copy number\">");
         addHeaderLine(header, "##FORMAT=<ID=PCNQ,Number=1,Type=String,Description=\"Phased copy number quality\">");
@@ -226,6 +230,10 @@ namespace Osprey {
         return PSTs;
     }
 
+    static string formatOspreyParams(double* params) {
+        return format("%d,%0.3f,%0.3f", (int)(params[0]), params[1], params[2]);
+    }
+
     static double computeCNF(const vector<double>& CNPs) {
         double cnf = 0;
         for (uint cn = 0; cn < CNPs.size(); cn++) {
@@ -316,9 +324,14 @@ namespace Osprey {
             return variant;
         }
 
-        vector< vector<double> > hapCNPs = phaseImpCore(mIBSMatrix, dipCNPs, mIterations, mDebug);
+        double impR2 = 0;
+        double ospParams[3] = { 0, 0, 0 };
+        vector< vector<double> > hapCNPs = phaseImpCore(mIBSMatrix, dipCNPs, mIterations, mDebug, &impR2, ospParams);
 
         Variant* result = variant->reheader(mOutputHeader);
+        result->updateInfoField("OSPR2", format("%1.3f", impR2));
+        result->updateInfoField("OSPPARAMS", formatOspreyParams(ospParams));
+
         vector<string> samples = result->getSampleIds();
         uint nSamples = samples.size();
         vector<string> PSTs = getSampleStatusVector(samples);

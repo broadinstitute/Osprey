@@ -33,6 +33,7 @@ namespace Osprey {
         std::vector< std::vector<float> > getCNLs();
         std::vector< std::vector<float> > getCNPs();
 
+        void updateInfoField(const std::string& key, const std::string& value);
         void updateFormatField(const std::string& key, const std::vector<std::string>& values);
         Variant* reheader(bcf_hdr_t* header);
     };

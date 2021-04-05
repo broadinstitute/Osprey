@@ -6,5 +6,6 @@
 
 extern std::string format(const std::string& format, ...);
 extern std::string formatVector(const std::vector<int>& v);
+extern std::string formatVector(const std::vector<uint>& v);
 
 #endif

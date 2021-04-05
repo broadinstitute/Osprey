@@ -18,6 +18,16 @@
 using namespace std;
 using namespace Osprey;
 
+static bool indexInRanges(uint value, const vector<uint>& ranges) {
+    uint n = ranges.size() / 2;
+    for (uint i = 0; i < n; i++) {
+        if (ranges[2*i] <= value && value <= ranges[2*i+1]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, const char* argv[]) {
 
     OspreyParams params;
@@ -64,6 +74,8 @@ int main(int argc, const char* argv[]) {
     if (params.verbose > 0) {
         cout << timestamp() << " Reading input file " << params.inputFile << " ..." << endl;
     }
+
+    uint variantIndex = 0;
     VCFReader vcfReader(params.inputFile);
     VCFWriter vcfWriter(params.outputFile);
     algorithm.updateVCFHeader(vcfReader, vcfWriter);
@@ -71,6 +83,10 @@ int main(int argc, const char* argv[]) {
         Variant* variant = vcfReader.nextVariant();
         if (variant == NULL) {
             break;
+        }
+        variantIndex++;
+        if (!params.siteIndexRanges.empty() && !indexInRanges(variantIndex, params.siteIndexRanges)) {
+            continue;
         }
         if (!siteSet.empty() && siteSet.find(variant->getId()) == siteSet.end()) {
             continue;

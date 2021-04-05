@@ -16,6 +16,7 @@ namespace Osprey {
         std::string outputFile;
         std::string ibsMatrixFile;
         std::vector<std::string> siteList;
+        std::vector<uint> siteIndexRanges;
 
         int debug;
         int verbose;

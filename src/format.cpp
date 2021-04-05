@@ -34,3 +34,17 @@ std::string formatVector(const std::vector<int>& v)
     str << "]";
     return(str.str());
 }
+
+std::string formatVector(const std::vector<uint>& v)
+{
+    std::ostringstream str;
+    str << "[";
+    for (uint i = 0; i < v.size(); i++) {
+        if (i > 0) {
+            str << ",";
+        }
+        str << v[i];
+    }
+    str << "]";
+    return(str.str());
+}
