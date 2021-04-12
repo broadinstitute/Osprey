@@ -3,6 +3,7 @@
 #include <climits>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -42,6 +43,9 @@ namespace Osprey {
         stream << " --iterations [-iter] N          Number of phasing iterations (" << DEFAULT_ITERATIONS << ")." << endl;
         stream << " --site ID                       Specify site to process or space separated list (all)." << endl;
         stream << " --siteIndex N@B | N[-M],...     Specify sites to process by variant index ranges or blocks (all)." << endl;
+        stream << " --benchmark type                Run internal benchmarks (cross)." << endl;
+        stream << " --benchmarkBatchSize N          Benchmark match size (1)." << endl;
+        stream << " --benchmarkSamples file         List of specific samples to use for benchmarking." << endl;
         stream << " --verbose N                     Verbosity level (" << DEFAULT_VERBOSE_LEVEL << ")." << endl;
         stream << " --debug N                       Debug output level (" << DEFAULT_DEBUG_LEVEL << ")." << endl;
     }
@@ -86,6 +90,17 @@ namespace Osprey {
         printUsage(cerr);
     }
 
+    static string trimWhitespace(const std::string& str) {
+        const std::string whitespace(" \t");
+        const size_t strBegin = str.find_first_not_of(whitespace);
+        if (strBegin == std::string::npos) {
+            return "";
+        }
+        const size_t strEnd = str.find_last_not_of(whitespace);
+        const size_t strRange = strEnd - strBegin + 1;
+        return str.substr(strBegin, strRange);
+    }
+
     static vector<string> parseStringList(const char* arg) {
         string str(arg);
         istringstream stream(str);
@@ -94,6 +109,24 @@ namespace Osprey {
         while (getline(stream, token, ' ')) {
             if (!token.empty()) {
                 result.push_back(token);
+            }
+        }
+        return result;
+    }
+
+    static vector<string> parseStringListFromFile(const char* path) {
+        string line;
+        string token;
+        vector<string> result;
+        ifstream stream(path);
+        while (getline(stream, line)) {
+            istringstream st(line);
+            if (getline(st, token, '\t')) {
+                token = trimWhitespace(token);
+                if (!token.empty()) {
+                    // Ideally we should strip leading/trailing whitespace
+                    result.push_back(token);
+                }
             }
         }
         return result;
@@ -255,6 +288,31 @@ namespace Osprey {
                     return -1;
                 }
                 iterations = value;
+            } else if (matches(option, "--benchmark")) {
+                if (!requireArg(option, optarg)) {
+                    return -1;
+                }
+                if (matches(optarg, "cross")) {
+                    runBenchmark = optarg;
+                } else {
+                    argerror(format("Unrecognized benchmark type: %s", optarg));
+                    return -1;
+                }
+            } else if (matches(option, "--benchmarkBatchSize")) {
+                if (!requireArg(option, optarg)) {
+                    return -1;
+                }
+                int value = atoi(optarg);
+                if (value <= 0) {
+                    argerror(format("Invalid value for %s: %s", option, optarg));
+                    return -1;
+                }
+                benchmarkBatchSize = value;
+            } else if (matches(option, "--benchmarkSamples")) {
+                if (!requireArg(option, optarg)) {
+                    return -1;
+                }
+                benchmarkSampleList = parseStringListFromFile(optarg);
             } else if (matches(option, "--verbose")) {
                 if (!requireArg(option, optarg)) {
                     return -1;

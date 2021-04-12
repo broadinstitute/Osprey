@@ -25,8 +25,13 @@ namespace Osprey {
         std::vector<std::string> mSampleStatus;
         std::vector< std::vector< std::pair<double, int> > > mIBSMatrix;
 
+        bool mBenchmarkCrossValidate;
+        int mBenchmarkBatchSize;
+        std::vector<std::string> mBenchmarkSampleIds;
+
         std::vector< std::vector<double> > getDiploidCNPs(Variant* variant);
         std::vector<std::string> getSampleStatusVector(const std::vector<std::string>& samples);
+        std::vector< std::vector<double> > crossImpute(Variant* variant, const std::vector< std::vector<double> >& dipCNPs);
 
     public:
         PhaseImpMissing();
@@ -37,6 +42,10 @@ namespace Osprey {
         void readIBSMatrix(std::string inputFile);
         void updateVCFHeader(VCFReader& reader, VCFWriter& writer);
         Variant* processVariant(Variant* variant);
+
+        void setBenchmarkCrossValidate(bool value);
+        void setBenchmarkBatchSize(int value);
+        void setBenchmarkSampleList(const std::vector<std::string>& value);
     };
 }
 

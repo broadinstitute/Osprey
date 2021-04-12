@@ -17,11 +17,14 @@ namespace Osprey {
         std::string ibsMatrixFile;
         std::vector<std::string> siteList;
         std::vector<uint> siteIndexRanges;
+        std::string runBenchmark;
+        std::vector<std::string> benchmarkSampleList;
 
         int debug;
         int verbose;
         int iterations;
         int threads;
+        int benchmarkBatchSize;
 
         OspreyParams();
         int processCommandLineArgs(int argc, const char* argv[]);

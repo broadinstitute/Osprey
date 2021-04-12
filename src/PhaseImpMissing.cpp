@@ -36,6 +36,8 @@ namespace Osprey {
         mVerbose = 0;
         mIterations = 0;
         mOutputHeader = NULL;
+        mBenchmarkCrossValidate = false;
+        mBenchmarkBatchSize = 1;
     }
 
     PhaseImpMissing::~PhaseImpMissing() {
@@ -51,6 +53,18 @@ namespace Osprey {
 
     void PhaseImpMissing::setIterations(int value) {
         mIterations = value;
+    }
+
+    void PhaseImpMissing::setBenchmarkCrossValidate(bool value) {
+        mBenchmarkCrossValidate = value;
+    }
+
+    void PhaseImpMissing::setBenchmarkBatchSize(int value) {
+        mBenchmarkBatchSize = value;
+    }
+
+    void PhaseImpMissing::setBenchmarkSampleList(const vector<string>& value) {
+        mBenchmarkSampleIds = value;
     }
 
     static void addHeaderLine(bcf_hdr_t* header, const char* text) {
@@ -79,6 +93,16 @@ namespace Osprey {
         mSampleStatus.resize(nSamples, string("."));
         const vector<string> inputSamples = vcfReader.getSampleIds();
         const set<string> inputSampleSet(inputSamples.begin(), inputSamples.end());
+        // It would be nice to support subsetting the output samples, but this is not easy with htslib.
+        /***
+        vector<string> outputSamples;
+        if (!mOutputSampleIds.empty()) {
+            outputSamples = mOutputSampleIds;
+        } else {
+            outputSamples = inputSamples;
+        }
+        const set<string> outputSampleSet(outputSamples.begin(), outputSamples.end());
+        ***/
         for (int i = 0; i < nSamples; i++) {
             const string& sample = mSampleIds[i];
             if (inputSampleSet.find(sample) == inputSampleSet.end()) {
@@ -269,8 +293,11 @@ namespace Osprey {
     }
 
     static string formatCNLs(const vector<double>& CNPs) {
-        vector<double> CNLs = CNPs;
+        if (CNPs.empty()) {
+            return ".";
+        }
         uint outLength = 1;
+        vector<double> CNLs = CNPs;
         for (uint i = 0; i < CNLs.size(); i++) {
             CNLs[i] = log10(CNLs[i]);
             if (CNLs[i] < MIN_CN_LIKELIHOOD) {
@@ -295,19 +322,26 @@ namespace Osprey {
         ostringstream buffer_PCNQ;
         ostringstream buffer_PCNL;
         for (uint h = 0; h < hapCNPs.size(); h++) {
-            int cnMax = max_element(hapCNPs[h].begin(), hapCNPs[h].end()) - hapCNPs[h].begin();
-            double qual = computeQual(hapCNPs[h]);
-            double cnf = computeCNF(hapCNPs[h]);
             if (h > 0) {
                 buffer_PCN << "|";
                 buffer_PCNF << "|";
                 buffer_PCNQ << "|";
                 buffer_PCNL << "|";
             }
-            buffer_PCN << format("%d", cnMax);
-            buffer_PCNF << format("%1.3f", cnf);
-            buffer_PCNQ << format("%1.1f", qual);
-            buffer_PCNL << formatCNLs(hapCNPs[h]);
+            if (hapCNPs[h].empty()) {
+                buffer_PCN << ".";
+                buffer_PCNF << ".";
+                buffer_PCNQ << ".";
+                buffer_PCNL << ".";
+            } else {
+                int cnMax = max_element(hapCNPs[h].begin(), hapCNPs[h].end()) - hapCNPs[h].begin();
+                double qual = computeQual(hapCNPs[h]);
+                double cnf = computeCNF(hapCNPs[h]);
+                buffer_PCN << format("%d", cnMax);
+                buffer_PCNF << format("%1.3f", cnf);
+                buffer_PCNQ << format("%1.1f", qual);
+                buffer_PCNL << formatCNLs(hapCNPs[h]);
+            }
         }
         PCN = buffer_PCN.str();
         PCNF = buffer_PCNF.str();
@@ -316,21 +350,28 @@ namespace Osprey {
     }
 
     Variant* PhaseImpMissing::processVariant(Variant* variant) {
-        vector< vector<double> > dipCNPs = getDiploidCNPs(variant);
-        if (dipCNPs.empty()) {
-            if (mVerbose > 0) {
-                cout << "Warning: Skipping variant " << variant->getId() << " that has no diploid CNL/CNP attributes" << endl;
-            }
-            return variant;
-        }
-
-        double impR2 = 0;
-        double ospParams[3] = { 0, 0, 0 };
-        vector< vector<double> > hapCNPs = phaseImpCore(mIBSMatrix, dipCNPs, mIterations, mDebug, &impR2, ospParams);
-
         Variant* result = variant->reheader(mOutputHeader);
-        result->updateInfoField("OSPR2", format("%1.3f", impR2));
-        result->updateInfoField("OSPPARAMS", formatOspreyParams(ospParams));
+        vector< vector<double> > dipCNPs = getDiploidCNPs(variant);
+
+        vector< vector<double> > hapCNPs;
+        if (mBenchmarkCrossValidate) {
+            if (dipCNPs.empty()) {
+                throw std::runtime_error(format("No diploid CNL/CNP attributes for benchmark site %s", variant->getId()));
+            }
+            hapCNPs = crossImpute(variant, dipCNPs);
+        } else {
+            if (dipCNPs.empty()) {
+                if (mVerbose > 0) {
+                    cout << "Warning: Skipping variant " << variant->getId() << " that has no diploid CNL/CNP attributes" << endl;
+                }
+                return result;
+            }
+            double impR2 = 0;
+            double ospParams[3] = { 0, 0, 0 };
+            hapCNPs = phaseImpCore(mIBSMatrix, dipCNPs, mIterations, mDebug, &impR2, ospParams);
+            result->updateInfoField("OSPR2", format("%1.3f", impR2));
+            result->updateInfoField("OSPPARAMS", formatOspreyParams(ospParams));
+        }
 
         vector<string> samples = result->getSampleIds();
         uint nSamples = samples.size();
@@ -353,5 +394,99 @@ namespace Osprey {
         result->updateFormatField("PCNQ", PCNQs);
         result->updateFormatField("PCNL", PCNLs);
         return result;
+    }
+
+    double meanCN(const vector<double>& CNPs) {
+        double meanCN = 0;
+        for (int c = 0; c < (int) CNPs.size(); c++) {
+            meanCN += CNPs[c] * c;
+        }
+        return meanCN;
+    }
+
+    // In theory this can be done with a lambda expression, but turning on c++11 seems to generate all sorts of warnings in STL.
+    static bool pair_cmp_value(const pair<int, double>& p1, const pair<int, double>& p2) {
+        return (p1.second < p2.second);
+    }
+
+    vector<int> orderSampleIndexes(const vector<int>& sampleIndexes, const vector< vector<double> >& dipCNPs) {
+        uint nSamples = sampleIndexes.size();
+        vector< pair<int, double> > pairvec(nSamples);
+        for (uint i = 0; i < nSamples; i++) {
+            pairvec[i].first = sampleIndexes[i];
+            pairvec[i].second = meanCN(dipCNPs[sampleIndexes[i]]);
+        }
+        sort(pairvec.begin(), pairvec.end(), pair_cmp_value);
+        vector<int> result(nSamples);
+        for (uint i = 0; i < nSamples; i++) {
+            result[i] = pairvec[i].first;
+        }
+        return result;
+    }
+
+    vector<int> computeBatchIndexes(int batchIndex, int batchCount, int total) {
+        vector<int> result;
+        int k = batchIndex;
+        while (k < total) {
+            result.push_back(k);
+            k += batchCount;
+        }
+        return result;
+    }
+
+    vector< vector<double> > PhaseImpMissing::crossImpute(Variant* variant, const vector< vector<double> >& dipCNPs) {
+        // Compute ordered list of sample indexes to benchmark (indexes into IBS matrix)
+        vector<int> benchmarkSampleIndexes;
+        if (mBenchmarkSampleIds.empty()) {
+            for (uint sampleIndex = 0; sampleIndex < mSampleIds.size(); sampleIndex++) {
+                if (!dipCNPs[sampleIndex].empty()) {
+                    benchmarkSampleIndexes.push_back(sampleIndex);
+                }
+            }
+        } else {
+            for (uint i = 0; i < mBenchmarkSampleIds.size(); i++) {
+                const string& id = mBenchmarkSampleIds[i];
+                const map<std::string, int>::iterator& it = mSampleIndexMap.find(id);
+                if (it == mSampleIndexMap.end()) {
+                    throw std::runtime_error(format("Benchmark sample %s not found in IBS map", id));
+                }
+                int sampleIndex = it->second;
+                if (dipCNPs[sampleIndex].empty()) {
+                    throw std::runtime_error(format("Benchmark sample %s does not have CNL/CNP attributes at site %s", id, variant->getId()));
+                }
+                benchmarkSampleIndexes.push_back(sampleIndex);
+            }
+            sort(benchmarkSampleIndexes.begin(), benchmarkSampleIndexes.end());
+        }
+        const int H = mIBSMatrix.size();
+        const int nBenchmarkSamples = benchmarkSampleIndexes.size();
+        const int batchSize = mBenchmarkBatchSize;
+        const int nBatches = (nBenchmarkSamples + (batchSize - 1)) / batchSize;
+        if (mVerbose > 0) {
+            cout << timestamp() << " Benchmarking site " << variant->getId()
+                 << " using " << benchmarkSampleIndexes.size() << " samples"
+                 << " in " << nBatches << " batches." << endl;
+        }
+        vector<int> orderedSampleIndexes = orderSampleIndexes(benchmarkSampleIndexes, dipCNPs);
+        // cout << "#DBG: benchmarkSampleIndexes: " << formatVector(benchmarkSampleIndexes) << endl;
+        // cout << "#DBG: orderedSampleIndexes: " << formatVector(orderedSampleIndexes) << endl;
+        vector< vector<double> > hapCNPs(H);
+        for (int b = 0; b < nBatches; b++) {
+            vector<int> batchIndexes = computeBatchIndexes(b, nBatches, nBenchmarkSamples);
+            // cout << "#DBG: batch " << (b+1) << " indexes: " << formatVector(batchIndexes) << endl;
+            vector< vector<double> > batchDipCNPs(dipCNPs);
+            for (uint i = 0; i < batchIndexes.size(); i++) {
+                int sampleIndex = orderedSampleIndexes[batchIndexes[i]];
+                batchDipCNPs[sampleIndex].clear();
+            }
+            vector< vector<double> > batchHapCNPs = phaseImpCore(mIBSMatrix, batchDipCNPs, mIterations, mDebug, NULL, NULL);
+            for (uint i = 0; i < batchIndexes.size(); i++) {
+                int sampleIndex = orderedSampleIndexes[batchIndexes[i]];
+                for (int h = 0; h < 2; h++) {
+                    hapCNPs[2*sampleIndex + h] = batchHapCNPs[2*sampleIndex + h];
+                }
+            }
+        }
+        return hapCNPs;
     }
 }
