@@ -66,6 +66,12 @@ int main(int argc, const char* argv[]) {
     algorithm.setVerbose(params.verbose);
     algorithm.setIterations(params.iterations);
 
+    if (params.runBenchmark == "cross") {
+        algorithm.setBenchmarkCrossValidate(true);
+        algorithm.setBenchmarkBatchSize(params.benchmarkBatchSize);
+        algorithm.setBenchmarkSampleList(params.benchmarkSampleList);
+    }
+
     if (params.verbose > 0) {
         cout << timestamp() << " Reading input file " << params.ibsMatrixFile << " ..." << endl;
     }
