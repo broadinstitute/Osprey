@@ -33,7 +33,12 @@ namespace Osprey {
         return OSPREY_VERSION;
     }
 
+    static void printVersion(ostream& stream) {
+        stream << "Osprey version " << OSPREY_VERSION << endl;
+    }
+
     static void printUsage(ostream& stream) {
+        printVersion(stream);
         stream << "Usage: osprey [options] inputFile" << endl;
         stream << "Options:" << endl;
         stream << " --inputFile [-vcf] file         Input VCF file." << endl;
@@ -46,6 +51,8 @@ namespace Osprey {
         stream << " --benchmark type                Run internal benchmarks (cross)." << endl;
         stream << " --benchmarkBatchSize N          Benchmark match size (1)." << endl;
         stream << " --benchmarkSamples file         List of specific samples to use for benchmarking." << endl;
+        stream << " --help [-h]                     Print help synopsis." << endl;
+        stream << " --version                       Print software version (" << OSPREY_VERSION << ")." << endl;
         stream << " --verbose N                     Verbosity level (" << DEFAULT_VERBOSE_LEVEL << ")." << endl;
         stream << " --debug N                       Debug output level (" << DEFAULT_DEBUG_LEVEL << ")." << endl;
     }
@@ -234,6 +241,10 @@ namespace Osprey {
         while (parseOption(argc, argv, argind, option, optarg)) {
             if (matches(option, "-h") || matches(option, "--help")) {
                 printUsage(cout);
+                return 0;
+            }
+            if (matches(option, "--version")) {
+                printVersion(cout);
                 return 0;
             }
             if (matches(option, "-vcf") || matches(option, "--inputFile")) {
