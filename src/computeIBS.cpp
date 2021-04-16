@@ -16,6 +16,7 @@
 #include "StringUtils.cpp"
 #include "Timer.cpp"
 #include "MapInterpolater.cpp"
+#include "timestamp.hpp"
 
 using namespace std;
 
@@ -179,7 +180,9 @@ int main(int argc, char *argv[]) {
 	while (iss >> sampleID) {
 	  sampleIDs.push_back(sampleID);
 	}
-	cout << "Reading data for " << sampleIDs.size() << " samples" << endl;
+        cout << "Reading input data for " << sampleIDs.size() << " samples" << endl;
+      } else {
+        getline(fin, line);
       }
     }
   }
