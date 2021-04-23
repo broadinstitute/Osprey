@@ -39,6 +39,15 @@ namespace Osprey {
         pHeader = NULL;
     }
 
+    std::string Variant::getChrom() {
+        return bcf_seqname(pHeader, pRecord);
+    }
+
+    uint32_t Variant::getPos() {
+        // Pos is stored zero-relative in bcf/htslib internal format.
+        return (uint32_t) (pRecord->pos + 1);
+    }
+
     std::string Variant::getId() {
         unpack(BCF_UN_STR);
         std::string id = pRecord->d.id;
@@ -46,8 +55,11 @@ namespace Osprey {
     }
 
     std::string Variant::getSiteText() {
-        // Temporary
-        return getId();
+        string result = getId();
+        if (result[0] == 0 || result == ".") {
+            result = format("%s:%d", getChrom(), getPos());
+        }
+        return result;
     }
 
     vector<string> Variant::getSampleIds() {
@@ -55,6 +67,46 @@ namespace Osprey {
         vector<string> result(nSamples);
         for (int i = 0; i < nSamples; i++) {
             result[i] = pHeader->samples[i];
+        }
+        return result;
+    }
+
+    // Return a compact encoding of sample genotypes in a single byte per sample.
+    // The ploidy must be <= 2. Only sites with 7 or fewer alleles are supported (typically just 2).
+    // Low order bits 1-3 are the first allele.
+    // Next bits 4-6 are the second allele.
+    // Bit 7 is always zero.
+    // The high order bit 8 tells whether the 
+    // The high order bit says whether the genotype is phased.
+    // The allele value 7 is used to represent the no-call allele.
+    std::vector<uint8_t> Variant::getEncodedGenotypes() {
+        int nSamples = bcf_hdr_nsamples(pHeader);
+        int32_t* gtArray = NULL;
+        int gtCount = 0;
+        int nGenotypes = bcf_get_genotypes(pHeader, pRecord, &gtArray, &gtCount);
+        int maxPloidy = nGenotypes/nSamples;
+        if (maxPloidy != 2) {
+            throw std::runtime_error(format("Invalid ploidy found for GT field type for %s: %d", getSiteText(), maxPloidy));
+        }
+        vector<uint8_t> result(nSamples);
+        for (int i = 0; i < nSamples; i++) {
+            uint8_t code = 0;
+            for (int j = 0; j < maxPloidy; j++) {
+                int32_t gt = gtArray[i * maxPloidy + j];
+                int allele = -1;
+                if (gt != bcf_int32_vector_end && !bcf_gt_is_missing(gt)) {
+                    allele = bcf_gt_allele(gt);
+                }
+                if (allele < -1 || allele > 6) {
+                    throw std::runtime_error(format("Cannot encode allele value for site %s: %d", getSiteText(), allele));
+                }
+                code |= (uint8_t) ((allele & 0x7) << (j*3));
+                bool phased = bcf_gt_is_phased(gt);
+                if (phased) {
+                    code |= (uint8_t) 0x80;
+                }
+            }
+            result[i] = code;
         }
         return result;
     }

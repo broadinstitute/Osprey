@@ -27,9 +27,12 @@ namespace Osprey {
         Variant(bcf1_t* record, bcf_hdr_t* header);
         ~Variant();
 
+        std::string getChrom();
+        uint32_t getPos();
         std::string getId();
         std::string getSiteText();
         std::vector<std::string> getSampleIds();
+        std::vector<uint8_t> getEncodedGenotypes();
         std::vector< std::vector<float> > getCNLs();
         std::vector< std::vector<float> > getCNPs();
 

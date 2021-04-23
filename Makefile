@@ -3,7 +3,7 @@ CXXFLAGS=	-g -O3 -fopenmp -Wall
 CPPFLAGS=	-I$(HTSLIBDIR)/include/htslib -Iinclude -I$(BOOST_DIR)/include
 INCLUDES=	
 OBJS=		
-EXES=		$(BINDIR)/computeIBS $(BINDIR)/phaseImpMissing $(BINDIR)/osprey
+EXES=		$(BINDIR)/computeIBS $(BINDIR)/phaseImpMissing $(BINDIR)/osprey $(BINDIR)/ospreyIBS
 BOOSTLIBS=	$(BOOST_DIR)/lib/libboost_iostreams.a
 #LIBS=		-L$(HTSLIBDIR)/lib -lhts -Wl,-Bstatic $(BOOSTLIBS) -lz -Wl,-Bdynamic
 #LIBS=		$(HTSLIBDIR)/lib/libhts.a -Wl,-Bstatic $(BOOSTLIBS) -Wl,-Bdynamic -lcurl -lz
@@ -27,6 +27,9 @@ HTSLIBDIR=	/humgen/cnp04/bobh/htslib
 all:		$(EXES)
 
 $(BINDIR)/osprey: src/Osprey.o src/OspreyParams.o src/VCFReader.o src/VCFWriter.o src/Variant.o src/PhaseImpMissing.o src/PhaseImpCore.o src/format.o src/timestamp.o
+		$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+$(BINDIR)/ospreyIBS: src/OspreyIBS.o src/OspreyIBSParams.o src/VCFReader.o src/Variant.o src/GeneticMap.o src/GenomeInterval.o src/format.o src/timestamp.o
 		$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 
 $(BINDIR)/computeIBS: src/computeIBS.o
