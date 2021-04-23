@@ -131,7 +131,6 @@ namespace Osprey {
             if (getline(st, token, '\t')) {
                 token = trimWhitespace(token);
                 if (!token.empty()) {
-                    // Ideally we should strip leading/trailing whitespace
                     result.push_back(token);
                 }
             }
