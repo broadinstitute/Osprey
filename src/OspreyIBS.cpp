@@ -32,7 +32,7 @@ struct IBSMatch {
     uint hap;
     uint hapKey;
     int32_t bpErrs[2][MAX_ERR];
-    double cMerrs[2][MAX_ERR];
+    double cmErrs[2][MAX_ERR];
     double len;
 
     bool operator < (const IBSMatch& match2) const {
@@ -74,7 +74,7 @@ static vector<IBSMatch> findBestIBS(uint h1,
                 // at telomere, no flanking region
                 for (int errs = 0; errs < MAX_ERR; errs++) {
                     matchInfo.bpErrs[k][errs] = 0;
-                    matchInfo.cMerrs[k][errs] = 0;
+                    matchInfo.cmErrs[k][errs] = 0;
                 }
                 continue;
             }
@@ -85,7 +85,7 @@ static vector<IBSMatch> findBestIBS(uint h1,
                 num_checks++;
                 if (genos_h1[m] != genos_h2[m]) {
                     matchInfo.bpErrs[k][errs] = bps[k][m];
-                    matchInfo.cMerrs[k][errs] = cMs[k][m];
+                    matchInfo.cmErrs[k][errs] = cMs[k][m];
                     errs++;
                     if (errs == MAX_ERR) {
                         break;
@@ -94,12 +94,12 @@ static vector<IBSMatch> findBestIBS(uint h1,
             }
             while (errs < MAX_ERR) {
                 matchInfo.bpErrs[k][errs] = bps[k].back();
-                matchInfo.cMerrs[k][errs] = cMs[k].back();
+                matchInfo.cmErrs[k][errs] = cMs[k].back();
                 errs++;
             }
         }
-        double lenLeft = weight0err*-matchInfo.cMerrs[0][0] + (1-weight0err)*-matchInfo.cMerrs[0][1];
-        double lenRight = weight0err*matchInfo.cMerrs[1][0] + (1-weight0err)*matchInfo.cMerrs[1][1];
+        double lenLeft = weight0err*-matchInfo.cmErrs[0][0] + (1-weight0err)*-matchInfo.cmErrs[0][1];
+        double lenRight = weight0err*matchInfo.cmErrs[1][0] + (1-weight0err)*matchInfo.cmErrs[1][1];
         double lenTot = lenLeft + lenRight;
         double lenMin = min(lenLeft, lenRight);
         matchInfo.len = weightTotalLen*lenTot + (1-weightTotalLen)*lenMin;
@@ -320,7 +320,7 @@ int main(int argc, const char* argv[]) {
 
     if (params.verbose > 0) {
         cout << timestamp() << " Finished IBS computations." << endl;
-        cout << timestamp() << " Wrinting output matrix ..." << endl;
+        cout << timestamp() << " Writing output matrix ..." << endl;
     }
 
     FileUtils::AutoGzOfstream fout;
@@ -332,14 +332,36 @@ int main(int argc, const char* argv[]) {
             const IBSMatch& match = matches[h][m];
             fout << "\t" << sampleIDs[match.hap/2]
                  << "\t" << ((match.hap%2)+1)
-                 << "\t" << match.cMerrs[0][1]
-                 << "\t" << match.cMerrs[0][0]
-                 << "\t" << match.cMerrs[1][0]
-                 << "\t" << match.cMerrs[1][1];
+                 << "\t" << match.cmErrs[0][1]
+                 << "\t" << match.cmErrs[0][0]
+                 << "\t" << match.cmErrs[1][0]
+                 << "\t" << match.cmErrs[1][1];
         }
         fout << endl;
     }
     fout.close();
+
+    if (!params.ibsPositionMatrixFile.empty()) {
+        if (params.verbose > 0) {
+            cout << timestamp() << " Writing output matrix by position ..." << endl;
+        }
+        FileUtils::AutoGzOfstream fout2;
+        fout2.openOrExit(params.ibsPositionMatrixFile);
+        for (uint h = 0; h < H; h++) {
+            fout2 << sampleIDs[h/2] << "\t" << ((h%2)+1);
+            for (uint m = 0; m < matches[h].size(); m++) {
+                const IBSMatch& match = matches[h][m];
+                fout2 << "\t" << sampleIDs[match.hap/2]
+                      << "\t" << ((match.hap%2)+1)
+                      << "\t" << match.bpErrs[0][1]
+                      << "\t" << match.bpErrs[0][0]
+                      << "\t" << match.bpErrs[1][0]
+                      << "\t" << match.bpErrs[1][1];
+            }
+            fout2 << endl;
+        }
+        fout2.close();
+    }
 
     if (params.verbose > 0) {
         cout << timestamp() << " Run complete." << endl;

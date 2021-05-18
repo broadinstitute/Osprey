@@ -14,6 +14,7 @@ namespace Osprey {
     public:
         std::string inputFile;
         std::string ibsMatrixFile;
+        std::string ibsPositionMatrixFile;
         std::string ibsTargetInterval;
         std::string geneticMapFile;
 

@@ -148,6 +148,12 @@ namespace Osprey {
                     return -1;
                 }
                 ibsMatrixFile = optarg;
+            } else if (matches(option, "--ibsPositionMatrixFile")) {
+                // Hidden argument
+                if (!requireArg(option, optarg)) {
+                    return -1;
+                }
+                ibsPositionMatrixFile = optarg;
             } else if (matches(option, "-L") || matches(option, "--ibsInterval")) {
                 if (!requireArg(option, optarg)) {
                     return -1;
