@@ -94,9 +94,10 @@ vector< vector<double> > phase(const double params[],
                 popCNP[c] += hapCNPs[h][c];
             }
         }
-        for (int c = 0; c < (int) popCNP.size(); c++) {
-            popCNP[c] /= numHaps;
-        }
+    }
+
+    for (int c = 0; c < (int) popCNP.size(); c++) {
+        popCNP[c] /= numHaps;
     }
 
     for (int j = 0; j < H/2; j++) {

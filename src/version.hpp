@@ -2,6 +2,6 @@
 #ifndef OSPREY_VERSION_HPP
 #define OSPREY_VERSION_HPP
 
-#define OSPREY_VERSION "0.1-r9"
+#define OSPREY_VERSION "0.1-r10"
 
 #endif
